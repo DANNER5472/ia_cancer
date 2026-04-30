@@ -1,0 +1,24 @@
+# Datasets de imágenes
+backend/ai-cervical-service/data/
+backend/ai-mama-service/data/
+backend/ai-pulmon-service/data/
+
+# Modelos entrenados
+backend/ai-cervical-service/models/
+backend/ai-mama-service/models/
+backend/ai-pulmon-service/models/
+
+# Entorno virtual Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Variables de entorno
+.env
+
+# Node modules
+node_modules/
+
+# Cache
+.pytest_cache/
