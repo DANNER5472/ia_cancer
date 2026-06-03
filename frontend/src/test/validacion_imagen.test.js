@@ -45,3 +45,6 @@ describe("Validación de archivos en ImagenUploader", () => {
 });
 
 ///npx vitest run src/test/validacion_imagen.test.js
+
+
+///cd front npx vitest run

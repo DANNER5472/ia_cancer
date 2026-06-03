@@ -1,23 +1,3 @@
-/**
- * Unit Tests — Frontend React
- * Proyecto: Sistema de Detección Temprana de Cáncer con IA
- * Autor: Danner Jamanca — UNIFRANZ
- *
- * Setup requerido:
- *   npm install --save-dev vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom
- *
- * Agregar en vite.config.js:
- *   test: { environment: "jsdom", globals: true, setupFiles: "./src/test/setup.js" }
- *
- * Crear src/test/setup.js con:
- *   import "@testing-library/jest-dom";
- *
- * Cómo correr:
- *   npx vitest run          (una vez)
- *   npx vitest              (modo watch)
- *   npx vitest --coverage   (con cobertura)
- */
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
