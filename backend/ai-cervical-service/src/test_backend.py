@@ -240,3 +240,6 @@ class TestLogicaCombinada:
     def test_no_concluyente_en_zona_gris(self):
         assert interpretar_resultado(0.45) == 'no_concluyente'
         assert interpretar_resultado(0.55) == 'no_concluyente'
+
+#cd backend/ai-cervical-service/src
+#pytest test_backend.py -v
