@@ -2,38 +2,31 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useParams, useNavigate } from 'react-router-dom'
-import { PREGUNTAS, MODELOS_DISPONIBLES } from '../../config/factoresRiesgo'
+import { PREGUNTAS } from '../../config/factoresRiesgo'
 import DashboardLayout from '../../layouts/DashboardLayout'
 
-const HOSPITALES_BOLIVIA = [
-  { ciudad: 'La Paz', nombre: 'Hospital de Clínicas — La Paz' },
-  { ciudad: 'La Paz', nombre: 'Hospital del Tórax — La Paz' },
-  { ciudad: 'La Paz', nombre: 'Hospital Oncológico — La Paz' },
-  { ciudad: 'La Paz', nombre: 'Clínica Foianini — La Paz' },
-  { ciudad: 'La Paz', nombre: 'Hospital Obrero N°1 — La Paz' },
-  { ciudad: 'La Paz', nombre: 'Hospital de la Mujer — La Paz' },
-  { ciudad: 'La Paz', nombre: 'Clínica Americana — La Paz' },
-  { ciudad: 'Cochabamba', nombre: 'Hospital Viedma — Cochabamba' },
-  { ciudad: 'Cochabamba', nombre: 'Clínica Los Olivos — Cochabamba' },
-  { ciudad: 'Cochabamba', nombre: 'Hospital IESS — Cochabamba' },
-  { ciudad: 'Cochabamba', nombre: 'Clínica Belga — Cochabamba' },
-  { ciudad: 'Cochabamba', nombre: 'Hospital Univalle — Cochabamba' },
-  { ciudad: 'Santa Cruz', nombre: 'Hospital Japonés — Santa Cruz' },
-  { ciudad: 'Santa Cruz', nombre: 'Hospital Oncológico — Santa Cruz' },
-  { ciudad: 'Santa Cruz', nombre: 'Clínica Foianini — Santa Cruz' },
-  { ciudad: 'Santa Cruz', nombre: 'Hospital de la Mujer — Santa Cruz' },
-  { ciudad: 'Santa Cruz', nombre: 'Clínica Los Olivos — Santa Cruz' },
-  { ciudad: 'Oruro', nombre: 'Hospital General San Juan de Dios — Oruro' },
-  { ciudad: 'Oruro', nombre: 'Hospital Obrero — Oruro' },
-  { ciudad: 'Potosí', nombre: 'Hospital Daniel Bracamonte — Potosí' },
-  { ciudad: 'Potosí', nombre: 'Hospital San Pedro — Potosí' },
-  { ciudad: 'Sucre', nombre: 'Hospital Santa Bárbara — Sucre' },
-  { ciudad: 'Sucre', nombre: 'Hospital Universitario — Sucre' },
-  { ciudad: 'Beni', nombre: 'Hospital de Trinidad — Beni' },
-  { ciudad: 'Pando', nombre: 'Hospital Roberto Galindo — Pando' },
-  { ciudad: 'Tarija', nombre: 'Hospital San Juan de Dios — Tarija' },
-  { ciudad: 'Tarija', nombre: 'Hospital Regional — Tarija' },
+const GATEWAY_URL = 'http://localhost:5000'
+
+// Fallback de hospitales cuando el gateway Flask no está disponible
+const HOSPITALES_FALLBACK = [
+  { nombre: 'Hospital Viedma', ciudad: 'Cochabamba' },
+  { nombre: 'Clínica Belga', ciudad: 'Cochabamba' },
+  { nombre: 'Hospital del Norte', ciudad: 'Cochabamba' },
+  { nombre: 'Clínica Los Ángeles', ciudad: 'Cochabamba' },
+  { nombre: 'Hospital de Clínicas', ciudad: 'La Paz' },
+  { nombre: 'Clínica Cemes', ciudad: 'La Paz' },
+  { nombre: 'Hospital Obrero N°1', ciudad: 'La Paz' },
+  { nombre: 'Hospital Japonés', ciudad: 'Santa Cruz' },
+  { nombre: 'Hospital Oncológico', ciudad: 'Santa Cruz' },
+  { nombre: 'Clínica Foianini', ciudad: 'Santa Cruz' },
 ]
+
+// Fallback de modelos cuando el gateway Flask no está disponible
+const MODELOS_FALLBACK = {
+  cervical: true,
+  mama: true,
+  pulmon: true,
+}
 
 function SelectorUsuario({ usuarios, seleccionado, onSeleccionar, rol }) {
   if (usuarios.length === 0) return (
@@ -97,6 +90,8 @@ function MedicoVerCaso() {
   const [tecnicos, setTecnicos] = useState([])
   const [enfermeraSeleccionada, setEnfermeraSeleccionada] = useState(null)
   const [tecnicoSeleccionado, setTecnicoSeleccionado] = useState(null)
+  const [hospitales, setHospitales] = useState([])
+  const [modelosDisponibles, setModelosDisponibles] = useState({})
 
   useEffect(() => {
     const cargar = async () => {
@@ -116,7 +111,24 @@ function MedicoVerCaso() {
       if (prev?.length >= 1) setNoConcluyentePrevio(true)
       setEnfermeras(enf ?? [])
       setTecnicos(tec ?? [])
-      // ← eliminada autoselección
+
+      // ← Hospitales y modelos desde el gateway (con fallback si el backend no está corriendo)
+      try {
+        const [resHospitales, resModelos] = await Promise.all([
+          fetch(`${GATEWAY_URL}/hospitales`),
+          fetch(`${GATEWAY_URL}/modelos/status`),
+        ])
+        if (resHospitales.ok) setHospitales(await resHospitales.json())
+        else setHospitales(HOSPITALES_FALLBACK)
+        if (resModelos.ok) setModelosDisponibles(await resModelos.json())
+        else setModelosDisponibles(MODELOS_FALLBACK)
+      } catch {
+        // Gateway Flask offline — usar datos locales de respaldo
+        console.warn('Gateway Flask no disponible en', GATEWAY_URL, '— usando fallback local')
+        setHospitales(HOSPITALES_FALLBACK)
+        setModelosDisponibles(MODELOS_FALLBACK)
+      }
+
       setLoading(false)
     }
     cargar()
@@ -182,9 +194,10 @@ function MedicoVerCaso() {
       formData.append('image', blob, 'imagen.jpg')
       formData.append('factores', JSON.stringify(factores))
 
-      const puertos = { cervical: 5001, mama: 5002, pulmon: 5003 }
-      const puerto = puertos[paciente.tipo_cancer_analizar]
-      const res = await fetch(`http://localhost:${puerto}/predict`, { method: 'POST', body: formData })
+      const res = await fetch(`${GATEWAY_URL}/predict/${paciente.tipo_cancer_analizar}`, {
+        method: 'POST',
+        body: formData
+      })
 
       if (!res.ok) {
         const err = await res.json()
@@ -203,7 +216,7 @@ function MedicoVerCaso() {
       })
       setPaso(3)
     } catch (err) {
-      setErrorIA(`❌ No se pudo conectar con el servidor de IA. Verifica que el servicio esté corriendo en el puerto correcto. (${err.message})`)
+      setErrorIA(`❌ No se pudo conectar con el servidor de IA. Verifica que el gateway esté corriendo. (${err.message})`)
     } finally {
       setAnalizando(false)
     }
@@ -324,9 +337,9 @@ function MedicoVerCaso() {
   }
 
   const preguntas = obtenerPreguntas()
-  const modeloDisponible = MODELOS_DISPONIBLES[paciente?.tipo_cancer_analizar]
-  const ciudades = [...new Set(HOSPITALES_BOLIVIA.map(h => h.ciudad))]
-  const hospitalesFiltrados = HOSPITALES_BOLIVIA.filter(h => {
+  const modeloDisponible = modelosDisponibles[paciente?.tipo_cancer_analizar]
+  const ciudades = [...new Set(hospitales.map(h => h.ciudad))]
+  const hospitalesFiltrados = hospitales.filter(h => {
     const coincideCiudad = !ciudadFiltro || h.ciudad === ciudadFiltro
     const coincideBusqueda = h.nombre.toLowerCase().includes(busquedaHospital.toLowerCase())
     return coincideCiudad && coincideBusqueda
@@ -342,7 +355,7 @@ function MedicoVerCaso() {
 
   return (
     <DashboardLayout>
-      <div className="p-8">
+      <div className="px-3 py-4 sm:p-8">
         <div className="max-w-3xl mx-auto">
           <a href="/medico/casos" className="text-sm text-gray-500 hover:underline">← Volver a casos</a>
           <h1 className="text-2xl font-bold text-teal-700 mt-1 mb-1">Análisis de Caso</h1>
@@ -404,13 +417,10 @@ function MedicoVerCaso() {
                 {muestra?.imagen_url ? (
                   <>
                     <img src={muestra.imagen_url} alt="muestra" className="max-h-80 mx-auto rounded-lg object-contain border" />
-
-                    {/* Selector de técnico siempre visible para rechazo */}
                     <div className="mt-4">
                       <p className="text-sm font-medium text-gray-700 mb-2">Técnico a notificar si rechazas la imagen:</p>
                       <SelectorUsuario usuarios={tecnicos} seleccionado={tecnicoSeleccionado} onSeleccionar={setTecnicoSeleccionado} rol="tecnico" />
                     </div>
-
                     <div className="flex gap-3 mt-4">
                       <button onClick={() => setPaso(2)} className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium">
                         ✓ Aprobar imagen y continuar
@@ -451,17 +461,17 @@ function MedicoVerCaso() {
 
               <div className="space-y-3">
                 {preguntas.map((p, i) => (
-                  <div key={p.id} className="p-3 rounded-lg border bg-gray-50">
-                    <p className="text-sm text-gray-700 mb-2">{i + 1}. {p.texto}</p>
-                    <div className="flex gap-2">
+                  <div key={p.id} className="p-4 rounded-lg border bg-gray-50">
+                    <p className="text-sm text-gray-700 mb-3 leading-snug">{i + 1}. {p.texto}</p>
+                    <div className="flex gap-2 flex-wrap">
                       {[
-                        { val: true, label: 'Sí', active: 'bg-red-500 text-white border-red-500', inactive: 'bg-white text-gray-600 border-gray-300 hover:border-red-300' },
-                        { val: false, label: 'No', active: 'bg-green-500 text-white border-green-500', inactive: 'bg-white text-gray-600 border-gray-300 hover:border-green-300' },
-                        { val: null, label: 'No sabe', active: 'bg-gray-400 text-white border-gray-400', inactive: 'bg-white text-gray-600 border-gray-300 hover:border-gray-400' },
+                        { val: true,  label: 'Sí',       active: 'bg-red-500 text-white border-red-500',     inactive: 'bg-white text-gray-600 border-gray-300 hover:border-red-300' },
+                        { val: false, label: 'No',       active: 'bg-green-500 text-white border-green-500', inactive: 'bg-white text-gray-600 border-gray-300 hover:border-green-300' },
+                        { val: null,  label: 'No sabe',  active: 'bg-gray-400 text-white border-gray-400',   inactive: 'bg-white text-gray-600 border-gray-300 hover:border-gray-400' },
                       ].map(btn => (
                         <button key={btn.label}
                           onClick={() => setRespuestas(prev => ({ ...prev, [p.id]: btn.val }))}
-                          className={`px-3 py-1 rounded text-xs font-medium border transition ${respuestas[p.id] === btn.val ? btn.active : btn.inactive}`}
+                          className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition whitespace-nowrap ${respuestas[p.id] === btn.val ? btn.active : btn.inactive}`}
                         >{btn.label}</button>
                       ))}
                     </div>
@@ -485,6 +495,7 @@ function MedicoVerCaso() {
               {!modeloDisponible ? (
                 <div className="mt-6 px-4 py-3 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg text-sm text-center">
                   ⚠️ El modelo de IA para <strong>{paciente?.tipo_cancer_analizar}</strong> aún no está disponible.
+                  <p className="mt-1 text-xs">Verifica que el servidor Flask esté corriendo en <code>localhost:5000</code></p>
                 </div>
               ) : analizando ? (
                 <div className="mt-6 text-center">
@@ -502,27 +513,50 @@ function MedicoVerCaso() {
           {/* PASO 3 */}
           {paso === 3 && resultado && (
             <div className="space-y-4">
-              <div className="bg-white border rounded-xl p-6 shadow-sm">
-                <h2 className="font-semibold text-gray-800 mb-4">Resultado del Análisis</h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                  <div className="text-center p-3 bg-gray-50 rounded-xl"><p className="text-xs text-gray-500">Prob. Normal</p><p className="text-xl font-bold text-gray-800">{resultado.probabilidadNormal?.toFixed(1)}%</p></div>
-                  <div className="text-center p-3 bg-gray-50 rounded-xl"><p className="text-xs text-gray-500">Prob. Anormal</p><p className="text-xl font-bold text-gray-800">{resultado.probabilidadAnormal?.toFixed(1)}%</p></div>
-                  <div className="text-center p-3 bg-blue-50 rounded-xl"><p className="text-xs text-gray-500">Ajuste factores</p><p className="text-xl font-bold text-blue-700">+{resultado.ajusteAplicado?.toFixed(2)}%</p></div>
-                  <div className="text-center p-3 bg-gray-50 rounded-xl"><p className="text-xs text-gray-500">Prob. Final</p><p className="text-xl font-bold text-gray-800">{resultado.probabilidadFinal?.toFixed(1)}%</p></div>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-4 mb-1">
-                  <div className={`h-4 rounded-full transition-all ${resultado.resultado === 'normal' ? 'bg-green-500' : resultado.resultado === 'anormal' ? 'bg-red-500' : 'bg-yellow-500'}`} style={{ width: `${resultado.probabilidadFinal}%` }} />
-                </div>
-                <div className="flex justify-between text-xs text-gray-400 mb-4">
-                  <span>Normal (0-40%)</span><span>No concluyente (40-60%)</span><span>Anormal (+60%)</span>
-                </div>
-                <div className={`text-center p-6 rounded-xl font-bold text-2xl ${resultado.resultado === 'normal' ? 'bg-green-50 text-green-700 border border-green-200' : resultado.resultado === 'anormal' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-yellow-50 text-yellow-700 border border-yellow-200'}`}>
+              <div className="bg-white border rounded-xl p-4 shadow-sm">
+                <h2 className="font-semibold text-gray-800 mb-3 text-base">Resultado del Análisis</h2>
+
+                {/* Veredicto principal — va primero y grande */}
+                <div className={`text-center py-5 px-3 rounded-xl font-bold text-3xl mb-4 ${resultado.resultado === 'normal' ? 'bg-green-50 text-green-700 border border-green-200' : resultado.resultado === 'anormal' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-yellow-50 text-yellow-700 border border-yellow-200'}`}>
                   {resultado.resultado === 'normal' ? '✅ NORMAL' : resultado.resultado === 'anormal' ? '🔴 ANORMAL' : '⚠️ NO CONCLUYENTE'}
                 </div>
+
+                {/* Barra de probabilidad */}
+                <div className="mb-1">
+                  <div className="flex justify-between text-xs text-gray-400 mb-1">
+                    <span>Normal</span><span>No concluyente</span><span>Anormal</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div className={`h-3 rounded-full transition-all ${resultado.resultado === 'normal' ? 'bg-green-500' : resultado.resultado === 'anormal' ? 'bg-red-500' : 'bg-yellow-500'}`} style={{ width: `${Math.min(resultado.probabilidadFinal, 100)}%` }} />
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-300 mt-0.5">
+                    <span>0%</span><span>40%</span><span>60%</span><span>100%</span>
+                  </div>
+                </div>
+
+                {/* Estadísticas en lista vertical — no grid */}
+                <div className="mt-4 divide-y border rounded-lg overflow-hidden">
+                  <div className="flex justify-between items-center px-4 py-2.5 bg-gray-50">
+                    <span className="text-xs text-gray-500">Probabilidad Normal (IA)</span>
+                    <span className="font-bold text-gray-800 text-sm">{resultado.probabilidadNormal?.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between items-center px-4 py-2.5 bg-gray-50">
+                    <span className="text-xs text-gray-500">Probabilidad Anormal (IA)</span>
+                    <span className="font-bold text-gray-800 text-sm">{resultado.probabilidadAnormal?.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between items-center px-4 py-2.5 bg-blue-50">
+                    <span className="text-xs text-blue-600">Ajuste por factores de riesgo</span>
+                    <span className="font-bold text-blue-700 text-sm">+{resultado.ajusteAplicado?.toFixed(2)}%</span>
+                  </div>
+                  <div className="flex justify-between items-center px-4 py-2.5 bg-teal-50">
+                    <span className="text-xs text-teal-700 font-medium">Probabilidad Final</span>
+                    <span className="font-bold text-teal-700 text-base">{resultado.probabilidadFinal?.toFixed(1)}%</span>
+                  </div>
+                </div>
+
                 <p className="text-xs text-gray-400 text-center mt-3">Sistema de apoyo al triaje. No reemplaza al especialista médico.</p>
               </div>
 
-              {/* CIERRE NORMAL */}
               {resultado.resultado === 'normal' && !analisisGuardadoId && (
                 <div className="bg-white border rounded-xl p-6 shadow-sm space-y-4">
                   <h2 className="font-semibold text-gray-800">Cierre: Resultado Normal</h2>
@@ -544,7 +578,6 @@ function MedicoVerCaso() {
                 </div>
               )}
 
-              {/* CIERRE ANORMAL */}
               {resultado.resultado === 'anormal' && !analisisGuardadoId && (
                 <div className="bg-white border rounded-xl p-6 shadow-sm space-y-4">
                   <h2 className="font-semibold text-gray-800">Cierre: Resultado Anormal</h2>
@@ -574,7 +607,6 @@ function MedicoVerCaso() {
                 </div>
               )}
 
-              {/* CIERRE NO CONCLUYENTE */}
               {resultado.resultado === 'no_concluyente' && !analisisGuardadoId && (
                 <div className="bg-white border rounded-xl p-6 shadow-sm space-y-4">
                   <h2 className="font-semibold text-gray-800">Resultado No Concluyente</h2>
